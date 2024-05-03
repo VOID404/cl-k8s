@@ -9,13 +9,16 @@
                 #:if-let)
   (:import-from :uiop
                 #:inter-directory-separator
-                #:getenv-pathnames)
+                #:getenv-pathnames
+                #:truenamize
+                #:with-temporary-file)
   (:import-from :uiop/common-lisp
                 #:user-homedir-pathname)
   (:export #:call-api
            #:call-api-with-config
            #:load-config
-           #:default-config))
+           #:default-config
+           #:*tmp-files*))
 
 (defpackage #:cl-kubernetes-examples
   (:use :cl :k8s))

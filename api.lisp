@@ -4,6 +4,17 @@
   (:documentation
    "Load a YAML configuration from a file or a list of files."))
 
+(defvar *tmp-files* nil)
+
+(defun inline->file (value file-type)
+  (if (null value)
+      value
+      (with-temporary-file (:stream os :pathname path :type file-type :keep t)
+        (setf path (truenamize path))
+        (write-sequence (qbase64:decode-string value) os)
+        (push path *tmp-files*)
+        path)))
+
 ;; https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/#merging-kubeconfig-files
 (defun merge-configurations (&optional current new)
   "Destructively merge two k8s configurations.
@@ -36,7 +47,33 @@ to satisfy REDUCE and easily build empty configurations)."
 
 (defmethod load-config ((path pathname))
   "Load a single configuration file."
-  (cl-yy:yaml-load-file path :size-limit (* 1024 1024)))
+  (let ((file (cl-yy:yaml-load-file path :size-limit (* 1024 1024))))
+    (when (users file)
+      (loop
+        for named-auth in (users file)
+        for auth = (user named-auth)
+
+        for cert-data = (gethash "client-certificate-data" auth)
+        for key-data = (gethash "client-key-data" auth)
+
+        when cert-data
+          do (setf (client-certificate auth)
+                   (inline->file cert-data "crt"))
+
+        when key-data
+          do (setf (client-key auth)
+                   (inline->file key-data "key"))))
+
+    (when (clusters file)
+      (loop
+        for named-cluster in (clusters file)
+        for cluster = (cluster named-cluster)
+
+        for cert-data = (gethash "certificate-authority-data" cluster)
+        when cert-data
+          do (setf (certificate-authority cluster)
+                   (inline->file cert-data "ca"))))
+    file))
 
 (defmethod load-config :around ((path pathname))
   "Add an IGNORE restart around LOAD-CONFIG for pathnames."
